@@ -1,90 +1,115 @@
 import { useState } from 'react';
 
-export default function DartKeypad({ onDartThrow, onUndo, onValidate, canValidate, disabled }) {
-  const [multiplier, setMultiplier] = useState(1);
+export default function DartKeypad({ onDartThrow, onUndo, disabled }) {
+  const [multiplier, setMultiplier] = useState(1); // 1, 2, or 3
 
-  const handleScoreClick = (value) => {
+  const handleNumberClick = (num) => {
     if (disabled) return;
-    onDartThrow(value, multiplier);
-    setMultiplier(1);
+    onDartThrow(num, multiplier);
+    setMultiplier(1); // Reset auto après un lancer
   };
 
-  const handleBullClick = (val) => {
+  const toggleMultiplier = (val) => {
     if (disabled) return;
-    onDartThrow(val, 1);
-    setMultiplier(1);
+    setMultiplier(multiplier === val ? 1 : val);
   };
-
-  // --- STYLES CSS (Tailwind) ---
-  // shadow-[...] crée l'effet 3D en bas du bouton
-  // active:translate-y simule l'enfoncement physique
-  const btn3D = "relative h-12 rounded-lg font-black text-xl transition-all duration-75 flex items-center justify-center select-none active:scale-95";
-  
-  const styleNum = `${btn3D} bg-slate-700 text-slate-200 shadow-[0_4px_0_0_#334155] active:shadow-none active:translate-y-[4px] border-t border-slate-600`;
-  
-  const styleDoubleActive = `${btn3D} bg-rose-600 text-white shadow-[0_0_15px_#e11d48] border-2 border-rose-400 translate-y-0`;
-  const styleDoubleInactive = `${btn3D} bg-slate-800 text-rose-700 border border-rose-900/30 opacity-60`;
-  
-  const styleTripleActive = `${btn3D} bg-emerald-500 text-white shadow-[0_0_15px_#10b981] border-2 border-emerald-300 translate-y-0`;
-  const styleTripleInactive = `${btn3D} bg-slate-800 text-emerald-600 border border-emerald-900/30 opacity-60`;
-
-  const styleBull25 = `${btn3D} bg-emerald-800 text-emerald-100 shadow-[0_4px_0_0_#064e3b] active:shadow-none active:translate-y-[4px] border-t border-emerald-600`;
-  const styleBull50 = `${btn3D} bg-rose-800 text-rose-100 shadow-[0_4px_0_0_#881337] active:shadow-none active:translate-y-[4px] border-t border-rose-600`;
-  const styleMiss = `${btn3D} bg-slate-900 text-slate-500 shadow-[0_4px_0_0_#0f172a] active:shadow-none active:translate-y-[4px] border border-slate-700`;
-  const styleUndo = `${btn3D} bg-amber-900/40 text-amber-500 shadow-[0_4px_0_0_#451a03] active:shadow-none active:translate-y-[4px] border border-amber-900`;
 
   return (
-    <div className="w-full px-2 flex flex-col gap-3 pb-safe">
+    <div className="w-full flex flex-col gap-2 px-2 select-none touch-manipulation pb-safe">
       
-      {/* LIGNE MULTIPLICATEURS (NEON) */}
-      <div className="flex gap-3 mb-1">
+      {/* BARRE D'ACTIONS RAPIDES */}
+      <div className="flex gap-2 h-14">
+        {/* Undo */}
         <button 
-          onClick={() => setMultiplier(multiplier === 2 ? 1 : 2)}
-          className={`flex-1 ${multiplier === 2 ? styleDoubleActive : styleDoubleInactive}`}
+            onClick={onUndo} 
+            disabled={disabled}
+            className="w-14 h-full rounded-xl bg-slate-800 border border-slate-700 text-slate-400 font-bold text-xl flex items-center justify-center active:scale-95 transition-all active:bg-slate-700"
         >
-          DOUBLE
+            ⌫
         </button>
+
+        {/* Multiplicateur DOUBLE */}
         <button 
-          onClick={() => setMultiplier(multiplier === 3 ? 1 : 3)}
-          className={`flex-1 ${multiplier === 3 ? styleTripleActive : styleTripleInactive}`}
+            onClick={() => toggleMultiplier(2)}
+            disabled={disabled}
+            className={`flex-1 rounded-xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 border-b-4 flex flex-col items-center justify-center leading-none
+                ${multiplier === 2 
+                    ? 'bg-rose-500 border-rose-700 text-white shadow-[0_0_15px_rgba(244,63,94,0.5)] translate-y-[2px] border-b-0' 
+                    : 'bg-slate-800 border-slate-900 text-rose-500 hover:bg-slate-700'
+                }
+            `}
         >
-          TRIPLE
+            Double
+            {multiplier === 2 && <span className="text-[10px] opacity-80 font-normal normal-case">Activé</span>}
+        </button>
+
+        {/* Multiplicateur TRIPLE */}
+        <button 
+            onClick={() => toggleMultiplier(3)}
+            disabled={disabled}
+            className={`flex-1 rounded-xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 border-b-4 flex flex-col items-center justify-center leading-none
+                ${multiplier === 3 
+                    ? 'bg-cyan-500 border-cyan-700 text-white shadow-[0_0_15px_rgba(6,182,212,0.5)] translate-y-[2px] border-b-0' 
+                    : 'bg-slate-800 border-slate-900 text-cyan-400 hover:bg-slate-700'
+                }
+            `}
+        >
+            Triple
+            {multiplier === 3 && <span className="text-[10px] opacity-80 font-normal normal-case">Activé</span>}
         </button>
       </div>
 
-      {/* GRILLE 1-20 */}
-      <div className="grid grid-cols-5 gap-2">
-        {[...Array(20)].map((_, i) => {
-          const num = i + 1;
-          return (
-            <button key={num} onClick={() => handleScoreClick(num)} disabled={disabled} className={styleNum}>
-              {num}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* LIGNE DU BAS */}
-      <div className="grid grid-cols-4 gap-2">
-        <button onClick={() => handleBullClick(25)} className={styleBull25}>25</button>
-        <button onClick={() => handleBullClick(50)} className={styleBull50}>50</button>
-        <button onClick={() => onDartThrow(0, 1)} className={styleMiss}>MISS</button>
-        <button onClick={onUndo} className={styleUndo}>⌫</button>
-      </div>
-      
-      {/* BOUTON VALIDATION */}
-       <button 
-          onClick={onValidate}
-          disabled={!canValidate}
-          className={`
-            w-full py-4 rounded-xl font-black text-lg tracking-[0.2em] transition-all duration-300 uppercase
-            ${canValidate 
-              ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] translate-y-0 opacity-100' 
-              : 'bg-slate-800 text-slate-600 h-0 py-0 opacity-0 overflow-hidden'}
-          `}
+      {/* GRILLE NUMÉRIQUE */}
+      <div className="grid grid-cols-5 gap-2 h-64">
+        {/* Chiffres 1 à 20 */}
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((num) => (
+          <button
+            key={num}
+            onClick={() => handleNumberClick(num)}
+            disabled={disabled}
+            className={`
+                rounded-lg font-bold text-xl transition-all active:scale-90 shadow-lg border-b-4 
+                ${multiplier === 1 ? 'bg-slate-700 border-slate-900 text-white hover:bg-slate-600' : ''}
+                ${multiplier === 2 ? 'bg-rose-900/40 border-rose-900 text-rose-300 hover:bg-rose-900/60' : ''}
+                ${multiplier === 3 ? 'bg-cyan-900/40 border-cyan-900 text-cyan-300 hover:bg-cyan-900/60' : ''}
+            `}
+          >
+            {num}
+          </button>
+        ))}
+        
+        {/* DERNIÈRE LIGNE : MISS | 25 | 50 */}
+        
+        {/* MISS (0) */}
+        <button 
+            onClick={() => handleNumberClick(0)} 
+            disabled={disabled}
+            className="rounded-lg font-bold text-[10px] text-slate-500 bg-slate-800 border-b-4 border-slate-900 hover:bg-slate-700 active:scale-90 uppercase tracking-widest"
         >
-          Valider le tour
+            MISS
         </button>
+
+        {/* 25 (SIMPLE BULL / VERT) */}
+        <button 
+            onClick={() => { onDartThrow(25, 1); setMultiplier(1); }} 
+            disabled={disabled || multiplier === 3} // Pas de triple 25
+            className="col-span-2 rounded-lg font-black text-lg text-emerald-100 bg-emerald-700 border-b-4 border-emerald-900 hover:bg-emerald-600 active:scale-90 shadow-lg flex items-center justify-center gap-2"
+        >
+            <span className="w-3 h-3 bg-emerald-300 rounded-full"></span>
+            25
+        </button>
+
+        {/* 50 (BULLSEYE / ROUGE) */}
+        <button 
+            onClick={() => { onDartThrow(50, 1); setMultiplier(1); }} 
+            disabled={disabled || multiplier === 3} // Pas de triple 50
+            className="col-span-2 rounded-lg font-black text-lg text-white bg-red-600 border-b-4 border-red-800 hover:bg-red-500 active:scale-90 shadow-lg flex items-center justify-center gap-2"
+        >
+            <span className="w-3 h-3 bg-red-200 rounded-full animate-pulse"></span>
+            BULL
+        </button>
+
+      </div>
     </div>
   );
 }

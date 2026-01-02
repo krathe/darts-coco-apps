@@ -5,6 +5,7 @@ import {
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
+// --- CONFIGURATION DES RANGS (XP SYSTEM) ---
 const RANK_SYSTEM = [
   { min: 0, max: 30, title: "DÉBUTANT", color: "text-slate-400", barColor: "bg-slate-500", icon: "🌱" },
   { min: 30, max: 40, title: "AMATEUR", color: "text-blue-400", barColor: "bg-blue-500", icon: "🍺" },
@@ -18,12 +19,14 @@ const RANK_SYSTEM = [
 const getRankData = (avg) => {
   const rank = RANK_SYSTEM.find(r => avg >= r.min && avg < r.max) || RANK_SYSTEM[RANK_SYSTEM.length - 1];
   const nextRank = RANK_SYSTEM[RANK_SYSTEM.indexOf(rank) + 1];
+  
   let progress = 100;
   if (nextRank) {
     const totalRange = rank.max - rank.min;
     const currentVal = avg - rank.min;
     progress = (currentVal / totalRange) * 100;
   }
+  
   return { ...rank, progress: Math.min(Math.max(progress, 0), 100), nextMin: nextRank ? rank.max : null };
 };
 
@@ -33,8 +36,12 @@ const CustomTooltip = ({ active, payload, label, config }) => {
       <div className="bg-slate-900 border border-white/10 rounded-lg p-3 shadow-2xl text-xs backdrop-blur-xl z-50">
         <p className="text-slate-400 mb-1 font-mono uppercase tracking-widest">{label}</p>
         <div className="flex items-baseline gap-2">
-            <span className="font-black text-2xl" style={{ color: config.color }}>{payload[0].value}</span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">{config.unit}</span>
+            <span className="font-black text-2xl" style={{ color: config.color }}>
+                {payload[0].value}
+            </span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">
+                {config.unit}
+            </span>
         </div>
       </div>
     );
@@ -49,7 +56,8 @@ export default function StatsDashboard({ onBack }) {
   const [availablePlayers, setAvailablePlayers] = useState([]);
   const [availableModes, setAvailableModes] = useState([]); 
   
-  const [selectedPlayer, setSelectedPlayer] = useState('ALL');
+  // MODIFICATION ICI : "Coco" par défaut
+  const [selectedPlayer, setSelectedPlayer] = useState('Coco');
   const [gameMode, setGameMode] = useState('ALL'); 
   const [timeFilter, setTimeFilter] = useState('ALL'); 
   const [graphMetric, setGraphMetric] = useState('avg'); 
@@ -65,15 +73,21 @@ export default function StatsDashboard({ onBack }) {
   const [currentRank, setCurrentRank] = useState(getRankData(0));
 
   useEffect(() => { fetchData(); }, []);
-  useEffect(() => { if (allMatches.length > 0) applyFilters(); }, [allMatches, selectedPlayer, timeFilter, gameMode]);
+  
+  useEffect(() => { 
+    if (allMatches.length > 0) applyFilters(); 
+  }, [allMatches, selectedPlayer, timeFilter, gameMode]);
 
   const fetchData = async () => {
     setLoading(true);
     const { data } = await supabase.from('matches').select('*').order('created_at', { ascending: true });
     if (data) {
       setAllMatches(data);
-      // Récupération unique des noms (Gagnants et Perdants sont tous stockés dans winner_name)
-      setAvailablePlayers([...new Set(data.map(m => m.winner_name))].sort());
+      // MODIFICATION ICI : On force l'ajout de "Coco" dans la liste pour que le dropdown soit correct
+      const players = new Set(data.map(m => m.winner_name));
+      players.add("Coco");
+      setAvailablePlayers([...players].sort());
+      
       const modes = [...new Set(data.map(m => m.mode))].filter(m => Number.isInteger(m)).sort((a,b) => a-b);
       setAvailableModes(modes);
     }
@@ -84,8 +98,11 @@ export default function StatsDashboard({ onBack }) {
     let data = [...allMatches];
     if (selectedPlayer !== 'ALL') data = data.filter(m => m.winner_name === selectedPlayer);
     
-    if (gameMode !== 'ALL') { data = data.filter(m => m.mode == gameMode); } 
-    else { data = data.filter(m => m.mode === 301 || m.mode === 501); }
+    if (gameMode !== 'ALL') {
+       data = data.filter(m => m.mode == gameMode);
+    } else {
+       data = data.filter(m => m.mode === 301 || m.mode === 501);
+    }
 
     const now = new Date();
     if (timeFilter === '30') {
@@ -110,7 +127,7 @@ export default function StatsDashboard({ onBack }) {
 
     const games = data.length;
     const wins = data.filter(m => m.result === 'WIN').length;
-    const winRate = ((wins / games) * 100).toFixed(0); // Nouveau: Taux de victoire
+    const winRate = ((wins / games) * 100).toFixed(0); 
 
     const avgs = data.map(m => Number(m.avg));
     const avg = (avgs.reduce((a, b) => a + b, 0) / games).toFixed(1);
@@ -127,13 +144,15 @@ export default function StatsDashboard({ onBack }) {
 
     const m301 = data.filter(m => m.mode == 301 && m.darts > 0).map(m => m.darts);
     const best301 = m301.length ? Math.min(...m301) : 0;
+
     const m501 = data.filter(m => m.mode == 501 && m.darts > 0).map(m => m.darts);
     const best501 = m501.length ? Math.min(...m501) : 0;
 
     const total180 = data.reduce((acc, m) => acc + (m.scores_180s || 0), 0);
     const highestCheckout = Math.max(...data.map(m => m.highest_checkout || 0));
 
-    let totalCheckoutSum = 0; let gamesWithCheckout = 0;
+    let totalCheckoutSum = 0;
+    let gamesWithCheckout = 0;
     data.forEach(m => {
         if (m.checkout && m.checkout !== "0%") {
             const val = parseInt(m.checkout.replace('%', ''));
@@ -165,6 +184,14 @@ export default function StatsDashboard({ onBack }) {
     })));
   };
 
+  const handleClearHistory = async () => {
+    if (!window.confirm("Attention : Cela effacera tout l'historique d'entraînement. Continuer ?")) return;
+    setLoading(true);
+    await supabase.from('matches').delete().neq('id', -1);
+    setAllMatches([]);
+    setLoading(false);
+  };
+
   const getGraphConfig = () => {
     switch(graphMetric) {
       case 'checkout': return { color: '#60a5fa', label: 'Doubles %', unit: '%' }; 
@@ -176,15 +203,19 @@ export default function StatsDashboard({ onBack }) {
 
   return (
     <div className="w-full h-screen bg-[#0f172a] text-white font-kanit flex flex-col overflow-hidden pb-safe">
+      
+      {/* 1. HEADER + NAV (Fixed) */}
       <div className="h-14 shrink-0 flex items-center justify-between px-4 bg-slate-900/80 backdrop-blur-md border-b border-white/5 z-50">
         <button onClick={onBack} className="text-slate-400 hover:text-white text-sm font-bold flex items-center gap-1 group">
             <span className="group-hover:-translate-x-1 transition-transform">←</span> Menu
         </button>
         <h2 className="text-emerald-400 font-black tracking-[0.2em] text-sm">ANALYTICS</h2>
-        <button onClick={() => { if(window.confirm("Tout effacer ?")) { supabase.from('matches').delete().neq('id', -1).then(() => setAllMatches([])); } }} className="text-red-900 hover:text-red-500 transition opacity-50 hover:opacity-100">🗑️</button>
+        <button onClick={handleClearHistory} className="text-red-900 hover:text-red-500 transition opacity-50 hover:opacity-100">🗑️</button>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-hide relative">
+        
+        {/* 2. BARRE DE FILTRES FLOTTANTE (Sticky) */}
         <div className="sticky top-0 z-40 bg-[#0f172a]/80 backdrop-blur-xl border-b border-white/5 px-4 py-3 flex flex-col gap-3 shadow-2xl transition-all">
             <div className="flex gap-2 justify-between">
                 <div className="flex gap-2 w-full">
@@ -202,6 +233,8 @@ export default function StatsDashboard({ onBack }) {
                     )}
                 </div>
             </div>
+            
+            {/* Segmented Control Période */}
             <div className="flex bg-slate-800/50 rounded-lg p-1 border border-white/5">
                {[ { id: 'ALL', label: 'Tout' }, { id: '30', label: '30 Jours' }, { id: '7', label: '7 Jours' } ].map(filter => (
                  <button key={filter.id} onClick={() => setTimeFilter(filter.id)} className={`flex-1 py-1 text-[9px] font-bold uppercase rounded-md transition-all ${timeFilter === filter.id ? 'bg-slate-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}>
@@ -212,11 +245,12 @@ export default function StatsDashboard({ onBack }) {
         </div>
 
         <div className="p-4 space-y-6 pb-12">
-            {loading ? <div className="text-center mt-20 text-emerald-500 animate-pulse font-mono">Chargement...</div> : stats.games === 0 ? <div className="text-center mt-20 text-slate-500">Aucune donnée trouvée.</div> : (
+            {loading ? <div className="text-center mt-20 text-emerald-500 animate-pulse font-mono">Chargement des données...</div> : stats.games === 0 ? <div className="text-center mt-20 text-slate-500">Aucune donnée trouvée.</div> : (
             <>
-                {/* HERO CARD AVEC WIN RATE */}
+                {/* 3. HERO CARD (Progression XP) */}
                 <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 border border-white/10 relative overflow-hidden shadow-2xl">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                    
                     <div className="flex items-center justify-between mb-4 relative z-10">
                         <div className="flex items-center gap-3">
                             <div className="text-4xl bg-black/20 p-2 rounded-xl border border-white/5">{currentRank.icon}</div>
@@ -235,31 +269,50 @@ export default function StatsDashboard({ onBack }) {
                             <div className="text-[9px] text-slate-500 uppercase font-bold">Moyenne Globale</div>
                         </div>
                     </div>
+
+                    {/* XP BAR */}
                     <div className="relative pt-2">
                         <div className="flex justify-between text-[9px] font-bold text-slate-500 mb-1 uppercase tracking-wider">
                             <span>Progression</span>
                             <span>{currentRank.nextMin ? `Prochain: ${currentRank.nextMin}` : 'Max Level'}</span>
                         </div>
                         <div className="h-3 w-full bg-slate-950 rounded-full overflow-hidden border border-white/5">
-                            <div className={`h-full ${currentRank.barColor} transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.3)] relative`} style={{ width: `${currentRank.progress}%` }}>
+                            <div 
+                                className={`h-full ${currentRank.barColor} transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.3)] relative`} 
+                                style={{ width: `${currentRank.progress}%` }}
+                            >
                                 <div className="absolute inset-0 bg-white/20 animate-[pulse_2s_infinite]"></div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* BENTO GRID */}
+                {/* 4. BENTO GRID (Layout Asymétrique) */}
                 <div className="grid grid-cols-2 gap-3">
+                    {/* Grande Boite : Checkout avec Jauge Circulaire STATIQUE */}
                     <div className="col-span-2 glass-panel p-4 rounded-2xl flex items-center justify-between border-l-4 border-amber-400">
                         <div className="flex flex-col">
                             <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Précision Doubles</span>
                             <span className="text-4xl font-black text-white mt-1">{stats.checkoutRate}<span className="text-xl text-slate-500">%</span></span>
                         </div>
+                        
+                        {/* JAUGE CIRCULAIRE STATIQUE (Conic Gradient) */}
                         <div className="relative h-16 w-16 flex items-center justify-center shadow-lg rounded-full bg-slate-800">
-                             <div className="absolute inset-0 rounded-full transition-all duration-1000" style={{background: `conic-gradient(#fbbf24 ${stats.checkoutRate}%, #334155 0)`}}></div>
-                             <div className="absolute inset-1.5 bg-slate-800 rounded-full flex items-center justify-center"><span className="text-2xl filter drop-shadow-md">🎯</span></div>
+                             {/* Le Donut */}
+                             <div 
+                                className="absolute inset-0 rounded-full transition-all duration-1000"
+                                style={{
+                                    background: `conic-gradient(#fbbf24 ${stats.checkoutRate}%, #334155 0)`
+                                }}
+                             ></div>
+                             {/* Le Masque Central */}
+                             <div className="absolute inset-1.5 bg-slate-800 rounded-full flex items-center justify-center">
+                                <span className="text-2xl filter drop-shadow-md">🎯</span>
+                             </div>
                         </div>
                     </div>
+
+                    {/* Stats Compactes */}
                     <div className="glass-panel p-3 rounded-xl flex flex-col justify-center items-center border border-white/5">
                         <span className="text-[9px] text-emerald-400 font-bold uppercase">Best Avg</span>
                         <span className="text-xl font-black text-white mt-1">{stats.bestAvg}</span>
@@ -268,6 +321,8 @@ export default function StatsDashboard({ onBack }) {
                         <span className="text-[9px] text-rose-400 font-bold uppercase">High Finish</span>
                         <span className="text-xl font-black text-white mt-1">{stats.highestCheckout}</span>
                     </div>
+
+                    {/* Best Leg Split */}
                     <div className="col-span-2 glass-panel p-3 rounded-xl border border-white/5 flex flex-col gap-2">
                         <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-center mb-1">Records (Best Legs)</div>
                         <div className="flex gap-2">
@@ -287,9 +342,14 @@ export default function StatsDashboard({ onBack }) {
                     </div>
                 </div>
 
+                {/* 5. CHART SECTION */}
                 <div className="glass-panel p-4 rounded-3xl border border-white/5">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>Performance</h3>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            Performance
+                        </h3>
+                        {/* Mini switch graph */}
                         <div className="flex bg-black/20 rounded-lg p-0.5">
                             {[ {id:'avg', label:'Avg'}, {id:'checkout', label:'%'} ].map(m => (
                                 <button key={m.id} onClick={() => setGraphMetric(m.id)} className={`px-3 py-1 text-[8px] font-bold rounded transition-all ${graphMetric === m.id ? 'bg-slate-700 text-white' : 'text-slate-500'}`}>{m.label}</button>
@@ -315,6 +375,7 @@ export default function StatsDashboard({ onBack }) {
                     </div>
                 </div>
 
+                {/* 6. SCORING DISTRIBUTION */}
                 <div className="glass-panel p-4 rounded-3xl border border-white/5">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Distribution 180s/140s</h3>
                     <div className="grid grid-cols-4 gap-2">
@@ -329,6 +390,7 @@ export default function StatsDashboard({ onBack }) {
                         ))}
                     </div>
                 </div>
+
             </>
             )}
         </div>

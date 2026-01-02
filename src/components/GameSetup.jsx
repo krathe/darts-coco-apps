@@ -16,7 +16,8 @@ export default function GameSetup({ onStart, onShowHistory, onShowStats }) {
     let finalP1Name = p1Name.trim();
     let finalP2Name = p2Name.trim();
 
-    if (gameType === 'SOLO') finalP1Name = finalP1Name || "Training";
+    // MODIFICATION ICI : Coco par défaut
+    if (gameType === 'SOLO') finalP1Name = finalP1Name || "Coco";
     else {
       finalP1Name = finalP1Name || "Joueur 1";
       finalP2Name = finalP2Name || "Joueur 2";
@@ -96,7 +97,8 @@ export default function GameSetup({ onStart, onShowHistory, onShowStats }) {
                 </div>
                 <input 
                     type="text" 
-                    placeholder={gameType === 'SOLO' ? "Nom du profil (Optionnel)" : "Nom Joueur 1"} 
+                    // MODIFICATION ICI : Placeholder explicite
+                    placeholder={gameType === 'SOLO' ? "Coco (Par défaut)" : "Nom Joueur 1"} 
                     value={p1Name} 
                     onChange={(e) => setP1Name(e.target.value)} 
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-slate-600 placeholder:font-normal" 

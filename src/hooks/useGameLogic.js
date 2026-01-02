@@ -16,6 +16,9 @@ export const useGameLogic = () => {
   const [matchConfig, setMatchConfig] = useState({ setsToWin: 1, legsToWin: 1, mode: 501 });
   const [matchScore, setMatchScore] = useState({ p1Sets: 0, p1Legs: 0, p2Sets: 0, p2Legs: 0 });
   const [processingWin, setProcessingWin] = useState(false);
+  
+  // NOUVEAU : Pour stocker la config et pouvoir rejouer
+  const [lastConfig, setLastConfig] = useState(null);
 
   const [historyStack, setHistoryStack] = useState([]);
   const saveLock = useRef(false);
@@ -89,7 +92,7 @@ export const useGameLogic = () => {
             scores_100plus: player.stats.scores100,
             scores_140plus: player.stats.scores140,
             scores_180s: player.stats.scores180,
-            match_details: player.history, // Contient maintenant le détail complet (voir updatePlayerStats)
+            match_details: player.history,
             created_at: new Date().toISOString()
         };
     });
@@ -115,6 +118,8 @@ export const useGameLogic = () => {
 
   // --- SETUP & ACTIONS ---
   const startGame = (config) => {
+    setLastConfig(config); // SAUVEGARDE DE LA CONFIG POUR LE REPLAY
+    
     setMatchConfig({ setsToWin: config.setsToWin || 1, legsToWin: config.legsToWin || 1, mode: config.mode });
     setMatchScore({ p1Sets: 0, p1Legs: 0, p2Sets: 0, p2Legs: 0 });
     const startScore = config.mode;
@@ -135,6 +140,13 @@ export const useGameLogic = () => {
     setHistoryStack([]);
     saveLock.current = false;
     playSound('START'); 
+  };
+
+  // NOUVELLE FONCTION RESTART
+  const restartGame = () => {
+    if (lastConfig) {
+        startGame(lastConfig);
+    }
   };
 
   const addDart = (baseScore, multiplier) => {
@@ -176,7 +188,6 @@ export const useGameLogic = () => {
 
   const undoLastDart = () => { if (!processingWin) setCurrentTurnDarts(prev => prev.slice(0, -1)); };
 
-  // --- MODIFICATION MAJEURE ICI ---
   const performSwitch = (isBustTurn = false, forcedDarts = null) => {
     saveSnapshot();
     const dartsToProcess = forcedDarts || currentTurnDarts;
@@ -186,7 +197,6 @@ export const useGameLogic = () => {
     let doublesTries = 0;
     dartsToProcess.forEach(d => { if (d.isDoubleTry) doublesTries++; });
     
-    // On passe maintenant dartsToProcess (le tableau complet) au lieu de juste les points
     updatePlayerStats(pointsScored, dartsToProcess, doublesTries, isBustTurn);
   };
 
@@ -198,8 +208,6 @@ export const useGameLogic = () => {
         const p = { ...newPlayers[currentPlayerIndex] };
         p.score -= points;
 
-        // --- ENREGISTREMENT DÉTAILLÉ ---
-        // Au lieu de pousser juste "points", on pousse un objet riche
         const turnDetail = {
             total: points,
             is_bust: isBust,
@@ -241,7 +249,6 @@ export const useGameLogic = () => {
     const player = { ...newPlayers[currentPlayerIndex] };
     player.score -= totalPoints;
     
-    // On enregistre aussi la dernière volée gagnante dans l'historique
     const turnDetail = {
         total: totalPoints,
         is_bust: false,
@@ -316,6 +323,7 @@ export const useGameLogic = () => {
     gameState, setGameState, players, currentPlayer: players[currentPlayerIndex],
     currentTurnDarts, addDart, undoLastDart, validateTurn: () => performSwitch(false),
     winner, legWinner, startNextLeg, matchScore, matchConfig,
-    startGame, backToMenu, checkoutHint, calculateStats, undoTurn, canUndo: historyStack.length > 0
+    startGame, backToMenu, checkoutHint, calculateStats, undoTurn, canUndo: historyStack.length > 0,
+    restartGame // Export de la nouvelle fonction
   };
 };

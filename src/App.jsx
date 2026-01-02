@@ -35,7 +35,7 @@ function App() {
     gameState, setGameState, players, currentPlayer, addDart, undoLastDart, validateTurn, 
     currentTurnDarts, winner, legWinner, startNextLeg, matchScore, matchConfig,
     startGame, backToMenu, checkoutHint, calculateStats,
-    undoTurn, canUndo
+    undoTurn, canUndo, restartGame // On récupère restartGame
   } = useGameLogic();
 
   const [isMuted, setIsMuted] = useState(() => localStorage.getItem('darts_muted') === 'true');
@@ -131,7 +131,6 @@ function App() {
       </div>
 
       <div className="w-full flex-1 flex flex-col justify-end pb-4">
-        {/* PLUS BESOIN DE props de validation ICI */}
         <DartKeypad 
             onDartThrow={addDart} 
             onUndo={undoLastDart} 
@@ -152,7 +151,8 @@ function App() {
         </div>
       )}
 
-      {winner && <GameStats winner={winner} stats={calculateStats(winner)} onRestart={backToMenu} />}
+      {/* ICI LE CHANGEMENT : onRestart={restartGame} */}
+      {winner && <GameStats winner={winner} stats={calculateStats(winner)} onRestart={restartGame} />}
     </div>
   )
 }

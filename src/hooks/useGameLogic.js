@@ -15,8 +15,6 @@ export const useGameLogic = () => {
   const [checkoutHint, setCheckoutHint] = useState(null);
   const [matchConfig, setMatchConfig] = useState({ setsToWin: 1, legsToWin: 1, mode: 501 });
   const [matchScore, setMatchScore] = useState({ p1Sets: 0, p1Legs: 0, p2Sets: 0, p2Legs: 0 });
-  
-  // --- NOUVEL ÉTAT : Empêche les clics pendant la "Pause Dramatique" ---
   const [processingWin, setProcessingWin] = useState(false);
 
   const [historyStack, setHistoryStack] = useState([]);
@@ -28,13 +26,13 @@ export const useGameLogic = () => {
     const snapshot = {
       players: JSON.parse(JSON.stringify(players)),
       currentPlayerIndex, legStarterIndex, matchScore: { ...matchScore },
-      winner, legWinner, processingWin // On sauve aussi l'état de lock
+      winner, legWinner, processingWin
     };
     setHistoryStack((prev) => [...prev, snapshot]);
   };
 
   const undoTurn = () => {
-    if (historyStack.length === 0 || processingWin) return; // Pas d'undo pendant la victoire
+    if (historyStack.length === 0 || processingWin) return;
     const lastSnapshot = historyStack[historyStack.length - 1];
     const newStack = historyStack.slice(0, -1);
     setPlayers(lastSnapshot.players);
@@ -45,13 +43,11 @@ export const useGameLogic = () => {
     setLegWinner(lastSnapshot.legWinner);
     setHistoryStack(newStack);
     setCurrentTurnDarts([]);
-    setProcessingWin(false); // On débloque si on annule
+    setProcessingWin(false);
   };
 
-  // --- AUTOMATISATION ---
   useEffect(() => {
     let timer;
-    // On ne switch pas automatiquement si on est en train de gagner (processingWin)
     if (currentTurnDarts.length === 3 && !winner && !legWinner && !processingWin) {
       const isLastDartBust = currentTurnDarts[2]?.isBust;
       if (!isLastDartBust) {
@@ -61,7 +57,6 @@ export const useGameLogic = () => {
     return () => clearTimeout(timer);
   }, [currentTurnDarts, winner, legWinner, processingWin]);
 
-  // --- HELPERS ---
   const isCheckoutAttempt = (score) => (score <= 40 && score % 2 === 0 && score > 0) || score === 50;
 
   const calculateStats = (player) => {
@@ -72,11 +67,12 @@ export const useGameLogic = () => {
     };
   };
 
-  // --- SAVE HISTORY ---
+  // --- SAUVEGARDE MULTI-JOUEURS ---
   const saveToHistory = async (winnerPlayer, allPlayers, mode, gameType) => {
     if (saveLock.current) return;
     saveLock.current = true;
 
+    // On boucle sur TOUS les joueurs (Gagnant ET Perdant)
     const matchesToInsert = allPlayers.map(player => {
         const stats = calculateStats(player);
         const isWinner = player.id === winnerPlayer.id;
@@ -84,7 +80,9 @@ export const useGameLogic = () => {
         return {
             mode: mode,
             game_type: gameType,
-            winner_name: player.name,
+            // Astuce : On utilise la colonne 'winner_name' pour stocker le nom du joueur de cette ligne
+            // C'est ce qui permettra de le retrouver dans le filtre "Joueur" des stats
+            winner_name: player.name, 
             result: isWinner ? 'WIN' : 'LOSS',
             avg: parseFloat(stats.avg),
             darts: player.stats.totalDarts,
@@ -118,31 +116,17 @@ export const useGameLogic = () => {
     }
   };
 
-  // --- SETUP ---
+  // --- SETUP & ACTIONS ---
   const startGame = (config) => {
-    setMatchConfig({ 
-        setsToWin: config.setsToWin || 1, 
-        legsToWin: config.legsToWin || 1,
-        mode: config.mode 
-    });
+    setMatchConfig({ setsToWin: config.setsToWin || 1, legsToWin: config.legsToWin || 1, mode: config.mode });
     setMatchScore({ p1Sets: 0, p1Legs: 0, p2Sets: 0, p2Legs: 0 });
-    
     const startScore = config.mode;
-
     const createPlayer = (id, name) => ({
-      id, name,
-      score: startScore, initialScore: startScore,
-      history: [],
-      stats: { 
-        totalDarts: 0, doublesAttempted: 0, totalPointsScored: 0, checkoutSuccesses: 0, 
-        scores60: 0, scores100: 0, scores140: 0, scores180: 0,
-        highestCheckout: 0
-      }
+      id, name, score: startScore, initialScore: startScore, history: [],
+      stats: { totalDarts: 0, doublesAttempted: 0, totalPointsScored: 0, checkoutSuccesses: 0, scores60: 0, scores100: 0, scores140: 0, scores180: 0, highestCheckout: 0 }
     });
-
     const newPlayers = [createPlayer(1, config.p1Name)];
     if (config.gameType === 'DUEL') newPlayers.push(createPlayer(2, config.p2Name));
-    
     setPlayers(newPlayers);
     setGameState('PLAYING');
     setCurrentPlayerIndex(0);
@@ -156,11 +140,8 @@ export const useGameLogic = () => {
     playSound('START'); 
   };
 
-  // --- ACTIONS ---
   const addDart = (baseScore, multiplier) => {
-    // On bloque tout si le match est gagné (pendant l'animation)
     if (winner || legWinner || processingWin || currentTurnDarts.length >= 3) return;
-    
     const points = baseScore * multiplier;
     let text = `${baseScore}`;
     if (multiplier === 2) text = `D${baseScore}`;
@@ -169,93 +150,78 @@ export const useGameLogic = () => {
 
     const currentPlayer = players[currentPlayerIndex];
     const currentTurnPoints = currentTurnDarts.reduce((acc, d) => acc + d.points, 0);
-    const scoreBeforeThrow = currentPlayer.score - currentTurnPoints;
-    const isDoubleTry = isCheckoutAttempt(scoreBeforeThrow);
-    const newDart = { points, text, multiplier, baseScore, isDoubleTry };
-    const remaining = scoreBeforeThrow - points;
+    const remaining = currentPlayer.score - currentTurnPoints - points;
 
     if (remaining < 0 || remaining === 1) {
-      const bustDart = { ...newDart, isBust: true };
+      const bustDart = { ...{ points, text, multiplier, baseScore }, isBust: true };
       const finalDarts = [...currentTurnDarts, bustDart];
       setCurrentTurnDarts(finalDarts);
-      setTimeout(() => { performSwitch(true, finalDarts); }, 1500);
+      setTimeout(() => performSwitch(true, finalDarts), 1500);
       return;
     }
     if (remaining === 0) {
-      const isDouble = multiplier === 2 || baseScore === 50;
-      if (isDouble) {
-        const winningDarts = [...currentTurnDarts, newDart];
+      if (multiplier === 2 || baseScore === 50) {
+        const winningDarts = [...currentTurnDarts, { points, text, multiplier, baseScore, isDoubleTry: true }];
         setCurrentTurnDarts(winningDarts);
-        // C'est ici que la magie opère : on gère la victoire
         handleLegWin(winningDarts);
         return;
       } else {
-        const bustDart = { ...newDart, isBust: true };
+        const bustDart = { ...{ points, text, multiplier, baseScore }, isBust: true };
         const finalDarts = [...currentTurnDarts, bustDart];
         setCurrentTurnDarts(finalDarts);
-        setTimeout(() => { performSwitch(true, finalDarts); }, 1500);
+        setTimeout(() => performSwitch(true, finalDarts), 1500);
         return;
       }
     }
-    setCurrentTurnDarts((prev) => [...prev, newDart]);
+    const isCheckout = isCheckoutAttempt(currentPlayer.score - currentTurnPoints);
+    setCurrentTurnDarts(prev => [...prev, { points, text, multiplier, baseScore, isDoubleTry: isCheckout }]);
   };
 
-  const undoLastDart = () => {
-      if (processingWin) return; // Pas d'undo pendant l'anim de victoire
-      setCurrentTurnDarts((prev) => prev.slice(0, -1));
-  };
+  const undoLastDart = () => { if (!processingWin) setCurrentTurnDarts(prev => prev.slice(0, -1)); };
 
   const performSwitch = (isBustTurn = false, forcedDarts = null) => {
     saveSnapshot();
     const dartsToProcess = forcedDarts || currentTurnDarts;
-    const dartsCount = dartsToProcess.length;
     const pointsScored = isBustTurn ? 0 : dartsToProcess.reduce((acc, d) => acc + d.points, 0);
-    
     if (isBustTurn) playSound('BUST'); else playSound('SCORE', pointsScored);
-    
     let doublesTries = 0;
     dartsToProcess.forEach(d => { if (d.isDoubleTry) doublesTries++; });
-    updatePlayerStats(pointsScored, dartsCount, doublesTries);
+    updatePlayerStats(pointsScored, dartsToProcess.length, doublesTries);
   };
 
   const updatePlayerStats = (points, dartsCount, doublesTries) => {
-    setPlayers(prevPlayers => {
-        const newPlayers = [...prevPlayers];
-        const player = { ...newPlayers[currentPlayerIndex] };
-        player.score -= points;
-        player.history = [...player.history, points];
-        player.stats = {
-            ...player.stats,
-            totalDarts: player.stats.totalDarts + dartsCount,
-            doublesAttempted: player.stats.doublesAttempted + doublesTries,
-            totalPointsScored: player.stats.totalPointsScored + points,
-            scores180: points === 180 ? player.stats.scores180 + 1 : player.stats.scores180,
-            scores140: (points >= 140 && points < 180) ? player.stats.scores140 + 1 : player.stats.scores140,
-            scores100: (points >= 100 && points < 140) ? player.stats.scores100 + 1 : player.stats.scores100,
-            scores60: (points >= 60 && points < 100) ? player.stats.scores60 + 1 : player.stats.scores60,
+    setPlayers(prev => {
+        const newPlayers = [...prev];
+        const p = { ...newPlayers[currentPlayerIndex] };
+        p.score -= points;
+        p.stats = {
+            ...p.stats,
+            totalDarts: p.stats.totalDarts + dartsCount,
+            doublesAttempted: p.stats.doublesAttempted + doublesTries,
+            totalPointsScored: p.stats.totalPointsScored + points,
+            scores180: points === 180 ? p.stats.scores180 + 1 : p.stats.scores180,
+            scores140: (points >= 140 && points < 180) ? p.stats.scores140 + 1 : p.stats.scores140,
+            scores100: (points >= 100 && points < 140) ? p.stats.scores100 + 1 : p.stats.scores100,
+            scores60: (points >= 60 && points < 100) ? p.stats.scores60 + 1 : p.stats.scores60,
         };
-        newPlayers[currentPlayerIndex] = player;
+        newPlayers[currentPlayerIndex] = p;
         return newPlayers;
     });
     setCurrentTurnDarts([]);
-    if (players.length > 1) setCurrentPlayerIndex((prev) => (prev === 0 ? 1 : 0));
+    if (players.length > 1) setCurrentPlayerIndex(prev => (prev === 0 ? 1 : 0));
   };
 
   const handleLegWin = (winningDarts) => {
     saveSnapshot();
-    setProcessingWin(true); // ON BLOQUE LES INPUTS
-
+    setProcessingWin(true);
     const totalPoints = winningDarts.reduce((acc, d) => acc + d.points, 0);
     const dartsCount = winningDarts.length;
     let doublesTries = 0;
     winningDarts.forEach(d => { if (d.isDoubleTry) doublesTries++; });
 
-    // Mise à jour du score à 0 immédiatement pour le visuel
     const newPlayers = [...players];
     const player = { ...newPlayers[currentPlayerIndex] };
-    player.score -= totalPoints; 
-    
-    // Mise à jour des stats
+    player.score -= totalPoints;
     player.stats.totalDarts += dartsCount;
     player.stats.doublesAttempted += doublesTries;
     player.stats.totalPointsScored += totalPoints;
@@ -265,44 +231,32 @@ export const useGameLogic = () => {
     else if (totalPoints >= 140) player.stats.scores140++;
     else if (totalPoints >= 100) player.stats.scores100++;
     else if (totalPoints >= 60) player.stats.scores60++;
-
     newPlayers[currentPlayerIndex] = player;
     setPlayers(newPlayers);
 
-    // Calcul Victoire Match / Set
     const winnerId = player.id;
     let newScore = { ...matchScore };
     if (winnerId === 1) newScore.p1Legs += 1; else newScore.p2Legs += 1;
-    let setWon = false;
-    let matchWon = false;
+    let setWon = false; let matchWon = false;
 
     if (newScore.p1Legs >= matchConfig.legsToWin) {
         newScore.p1Sets += 1; newScore.p1Legs = 0; newScore.p2Legs = 0; setWon = true;
     } else if (newScore.p2Legs >= matchConfig.legsToWin) {
         newScore.p2Sets += 1; newScore.p1Legs = 0; newScore.p2Legs = 0; setWon = true;
     }
-
-    if (newScore.p1Sets >= matchConfig.setsToWin || newScore.p2Sets >= matchConfig.setsToWin) {
-        matchWon = true;
-    }
-
+    if (newScore.p1Sets >= matchConfig.setsToWin || newScore.p2Sets >= matchConfig.setsToWin) matchWon = true;
     setMatchScore(newScore);
 
-    // --- LE CŒUR DE LA MODIFICATION ---
     if (matchWon) {
-        playSound('WIN_MATCH'); // Son immédiat
-        
-        // PAUSE DRAMATIQUE (1.5s) avant d'afficher l'écran de fin
+        playSound('WIN_MATCH');
         setTimeout(() => {
             setWinner(player);
+            // ICI: On passe bien 'newPlayers' qui contient les stats des 2 joueurs
             saveToHistory(player, newPlayers, player.initialScore, newPlayers.length > 1 ? 'DUEL' : 'SOLO');
-            setProcessingWin(false); // On débloque (même si l'écran a changé)
+            setProcessingWin(false);
         }, 1500);
-
     } else {
         playSound('WIN_LEG');
-        // Pour une manche simple, on peut aussi mettre un mini délai si on veut, 
-        // mais c'est moins critique car une modale apparaît.
         setLegWinner({ player: player, setWon: setWon });
         setProcessingWin(false);
     }

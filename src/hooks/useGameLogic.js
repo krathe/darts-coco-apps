@@ -67,12 +67,11 @@ export const useGameLogic = () => {
     };
   };
 
-  // --- SAUVEGARDE MULTI-JOUEURS ---
+  // --- SAUVEGARDE DB ---
   const saveToHistory = async (winnerPlayer, allPlayers, mode, gameType) => {
     if (saveLock.current) return;
     saveLock.current = true;
 
-    // On boucle sur TOUS les joueurs (Gagnant ET Perdant)
     const matchesToInsert = allPlayers.map(player => {
         const stats = calculateStats(player);
         const isWinner = player.id === winnerPlayer.id;
@@ -80,9 +79,7 @@ export const useGameLogic = () => {
         return {
             mode: mode,
             game_type: gameType,
-            // Astuce : On utilise la colonne 'winner_name' pour stocker le nom du joueur de cette ligne
-            // C'est ce qui permettra de le retrouver dans le filtre "Joueur" des stats
-            winner_name: player.name, 
+            winner_name: player.name,
             result: isWinner ? 'WIN' : 'LOSS',
             avg: parseFloat(stats.avg),
             darts: player.stats.totalDarts,
@@ -92,6 +89,7 @@ export const useGameLogic = () => {
             scores_100plus: player.stats.scores100,
             scores_140plus: player.stats.scores140,
             scores_180s: player.stats.scores180,
+            match_details: player.history, // Contient maintenant le détail complet (voir updatePlayerStats)
             created_at: new Date().toISOString()
         };
     });
@@ -110,7 +108,6 @@ export const useGameLogic = () => {
         const { error } = await supabase.from('matches').insert(matchesToInsert);
         if (error) throw error;
       } catch (err) { 
-          console.error("Erreur Supabase:", err); 
           saveLocal(); 
       }
     }
@@ -179,21 +176,42 @@ export const useGameLogic = () => {
 
   const undoLastDart = () => { if (!processingWin) setCurrentTurnDarts(prev => prev.slice(0, -1)); };
 
+  // --- MODIFICATION MAJEURE ICI ---
   const performSwitch = (isBustTurn = false, forcedDarts = null) => {
     saveSnapshot();
     const dartsToProcess = forcedDarts || currentTurnDarts;
     const pointsScored = isBustTurn ? 0 : dartsToProcess.reduce((acc, d) => acc + d.points, 0);
     if (isBustTurn) playSound('BUST'); else playSound('SCORE', pointsScored);
+    
     let doublesTries = 0;
     dartsToProcess.forEach(d => { if (d.isDoubleTry) doublesTries++; });
-    updatePlayerStats(pointsScored, dartsToProcess.length, doublesTries);
+    
+    // On passe maintenant dartsToProcess (le tableau complet) au lieu de juste les points
+    updatePlayerStats(pointsScored, dartsToProcess, doublesTries, isBustTurn);
   };
 
-  const updatePlayerStats = (points, dartsCount, doublesTries) => {
+  const updatePlayerStats = (points, darts, doublesTries, isBust) => {
+    const dartsCount = darts.length;
+    
     setPlayers(prev => {
         const newPlayers = [...prev];
         const p = { ...newPlayers[currentPlayerIndex] };
         p.score -= points;
+
+        // --- ENREGISTREMENT DÉTAILLÉ ---
+        // Au lieu de pousser juste "points", on pousse un objet riche
+        const turnDetail = {
+            total: points,
+            is_bust: isBust,
+            darts: darts.map(d => ({
+                val: d.baseScore,
+                mult: d.multiplier,
+                txt: d.text,
+                pts: d.points
+            }))
+        };
+        p.history = [...p.history, turnDetail];
+
         p.stats = {
             ...p.stats,
             totalDarts: p.stats.totalDarts + dartsCount,
@@ -222,6 +240,15 @@ export const useGameLogic = () => {
     const newPlayers = [...players];
     const player = { ...newPlayers[currentPlayerIndex] };
     player.score -= totalPoints;
+    
+    // On enregistre aussi la dernière volée gagnante dans l'historique
+    const turnDetail = {
+        total: totalPoints,
+        is_bust: false,
+        darts: winningDarts.map(d => ({ val: d.baseScore, mult: d.multiplier, txt: d.text, pts: d.points }))
+    };
+    player.history = [...player.history, turnDetail];
+
     player.stats.totalDarts += dartsCount;
     player.stats.doublesAttempted += doublesTries;
     player.stats.totalPointsScored += totalPoints;
@@ -251,7 +278,6 @@ export const useGameLogic = () => {
         playSound('WIN_MATCH');
         setTimeout(() => {
             setWinner(player);
-            // ICI: On passe bien 'newPlayers' qui contient les stats des 2 joueurs
             saveToHistory(player, newPlayers, player.initialScore, newPlayers.length > 1 ? 'DUEL' : 'SOLO');
             setProcessingWin(false);
         }, 1500);

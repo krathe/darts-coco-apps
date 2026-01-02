@@ -4,10 +4,17 @@
 export const getCheckoutGuide = (score) => {
   const checkouts = {
     170: "T20 T20 BULL",
+    169: "T20 T19 32 (Laisser D16)",
+    168: "T20 T20 28 (Laisser D14)",
     167: "T20 T19 BULL",
+    166: "T20 T20 26 (Laisser D13)",
+    165: "T20 T19 28 (Laisser D14)",
     164: "T20 T18 BULL",
+    163: "T20 T17 32 (Laisser D16)",
+    162: "T20 T18 28 (Laisser D14)",
     161: "T20 T17 BULL",
     160: "T20 T20 D20",
+    159: "T20 T19 22 (Laisser D11)",
     158: "T20 T20 D19",
     157: "T20 T19 D20",
     156: "T20 T20 D18",

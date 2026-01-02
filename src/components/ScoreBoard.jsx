@@ -1,16 +1,16 @@
-export default function ScoreBoard({ players, currentPlayerId, matchScore, matchConfig }) {
-  const calculateAvg = (player) => {
-    if (player.stats.totalDarts === 0) return 0;
-    return ((player.stats.totalPointsScored / player.stats.totalDarts) * 3).toFixed(1);
-  };
+import { calculateAvg } from '../utils/stats';
 
+export default function ScoreBoard({ players, currentPlayerId, matchScore, matchConfig }) {
+  
   return (
     <div className="flex w-full gap-3 px-3 mb-4 mt-2">
       {players.map((player) => {
         const isActive = player.id === currentPlayerId;
         const sets = player.id === 1 ? matchScore.p1Sets : matchScore.p2Sets;
         const legs = player.id === 1 ? matchScore.p1Legs : matchScore.p2Legs;
-        const avg = calculateAvg(player);
+        
+        // Utilisation de la fonction utilitaire importée
+        const avg = calculateAvg(player.stats.totalPointsScored, player.stats.totalDarts);
 
         return (
           <div 

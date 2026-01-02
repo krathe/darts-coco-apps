@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getCheckoutGuide } from '../utils/checkouts';
 import { supabase } from '../supabaseClient';
 import { playSound } from '../utils/sound';
+import { calculateAvg, calculateCheckoutRate } from '../utils/stats';
 
 export const useGameLogic = () => {
   const [gameState, setGameState] = useState('SETUP'); 
@@ -21,8 +22,9 @@ export const useGameLogic = () => {
   // --- SAVE/UNDO ---
   const saveSnapshot = () => {
     if (!players.length) return;
+    // Note: structuredClone est plus performant que JSON parse/stringify
     const snapshot = {
-      players: JSON.parse(JSON.stringify(players)),
+      players: structuredClone(players),
       currentPlayerIndex, legStarterIndex, matchScore: { ...matchScore },
       winner, legWinner
     };
@@ -59,16 +61,38 @@ export const useGameLogic = () => {
   const isCheckoutAttempt = (score) => (score <= 40 && score % 2 === 0 && score > 0) || score === 50;
 
   const calculateStats = (player) => {
-    if (!player || player.stats.totalDarts === 0) return { avg: "0.0", checkout: "0%" };
-    const avg = ((player.stats.totalPointsScored / player.stats.totalDarts) * 3).toFixed(1);
-    let checkout = "0%";
-    if (player.stats.doublesAttempted > 0) {
-      checkout = Math.round((player.stats.checkoutSuccesses / player.stats.doublesAttempted) * 100) + "%";
-    }
-    return { avg, checkout };
+    if (!player) return { avg: "0.0", checkout: "0%" };
+    return {
+      avg: calculateAvg(player.stats.totalPointsScored, player.stats.totalDarts),
+      checkout: calculateCheckoutRate(player.stats.checkoutSuccesses, player.stats.doublesAttempted)
+    };
   };
 
-  // --- SAUVEGARDE ---
+  // --- GESTION DE LA SAUVEGARDE (OFFLINE READY) ---
+
+  // Synchronisation des matchs en attente quand le réseau revient
+  const syncOfflineMatches = async () => {
+    const unsynced = JSON.parse(localStorage.getItem('unsynced_matches') || '[]');
+    if (unsynced.length === 0) return;
+
+    console.log(`📡 Tentative de synchronisation de ${unsynced.length} matchs...`);
+    const { error } = await supabase.from('matches').insert(unsynced);
+    
+    if (!error) {
+      console.log('✅ Synchronisation réussie !');
+      localStorage.removeItem('unsynced_matches');
+    } else {
+      console.error('❌ Échec synchro, on réessaiera plus tard.');
+    }
+  };
+
+  // Écouteur réseau
+  useEffect(() => {
+    window.addEventListener('online', syncOfflineMatches);
+    syncOfflineMatches(); // Tentative au chargement
+    return () => window.removeEventListener('online', syncOfflineMatches);
+  }, []);
+
   const saveToHistory = async (winnerPlayer, allPlayers, mode, gameType) => {
     if (saveLock.current) return;
     saveLock.current = true;
@@ -85,20 +109,32 @@ export const useGameLogic = () => {
             avg: parseFloat(stats.avg),
             darts: player.stats.totalDarts,
             checkout: stats.checkout,
-            // NOUVEAU : On sauvegarde le meilleur checkout du joueur pour ce match
             highest_checkout: player.stats.highestCheckout || 0,
             scores_60plus: player.stats.scores60,
             scores_100plus: player.stats.scores100,
             scores_140plus: player.stats.scores140,
-            scores_180s: player.stats.scores180
+            scores_180s: player.stats.scores180,
+            created_at: new Date().toISOString() // Important pour la date réelle
         };
     });
 
-    try {
-      const { error } = await supabase.from('matches').insert(matchesToInsert);
-      if (error) { console.error('❌ Erreur Supabase:', error); } 
-      else { console.log('✅ Match sauvegardé !'); }
-    } catch (err) { console.error("❌ Erreur Critique:", err); }
+    // Logique Offline / Online
+    if (!navigator.onLine) {
+        console.log('⚠️ Pas de réseau. Sauvegarde locale...');
+        const currentQueue = JSON.parse(localStorage.getItem('unsynced_matches') || '[]');
+        localStorage.setItem('unsynced_matches', JSON.stringify([...currentQueue, ...matchesToInsert]));
+        // On pourrait ajouter un petit toast ici
+    } else {
+        try {
+            const { error } = await supabase.from('matches').insert(matchesToInsert);
+            if (error) throw error;
+            console.log('✅ Match sauvegardé sur Supabase !');
+        } catch (err) {
+            console.error("❌ Erreur envoi, repli sur sauvegarde locale:", err);
+            const currentQueue = JSON.parse(localStorage.getItem('unsynced_matches') || '[]');
+            localStorage.setItem('unsynced_matches', JSON.stringify([...currentQueue, ...matchesToInsert]));
+        }
+    }
   };
 
   // --- SETUP ---
@@ -113,7 +149,7 @@ export const useGameLogic = () => {
       stats: { 
         totalDarts: 0, doublesAttempted: 0, totalPointsScored: 0, checkoutSuccesses: 0, 
         scores60: 0, scores100: 0, scores140: 0, scores180: 0,
-        highestCheckout: 0 // <--- NOUVELLE STAT INITIALISÉE
+        highestCheckout: 0
       }
     });
 
@@ -223,7 +259,7 @@ export const useGameLogic = () => {
 
   const handleLegWin = (winningDarts) => {
     saveSnapshot();
-    const totalPoints = winningDarts.reduce((acc, d) => acc + d.points, 0); // SCORE DE FERMETURE
+    const totalPoints = winningDarts.reduce((acc, d) => acc + d.points, 0);
     const dartsCount = winningDarts.length;
     let doublesTries = 0;
     winningDarts.forEach(d => { if (d.isDoubleTry) doublesTries++; });
@@ -237,8 +273,6 @@ export const useGameLogic = () => {
     player.stats.totalPointsScored += totalPoints;
     player.stats.checkoutSuccesses += 1;
     
-    // --- NOUVEAU : MISE A JOUR DU HIGHEST CHECKOUT ---
-    // Si le score de fermeture actuel est plus grand que l'ancien record, on met à jour
     if (totalPoints > player.stats.highestCheckout) {
         player.stats.highestCheckout = totalPoints;
     }

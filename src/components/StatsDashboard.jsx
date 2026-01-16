@@ -3,7 +3,8 @@ import { storage } from '../utils/storage';
 import { calculateGlobalStats, getRankData } from '../utils/stats';
 import { 
   AreaChart, Area, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid
+  PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar
 } from 'recharts';
 import Bobs27Stats from './Bobs27Stats';
 
@@ -410,6 +411,31 @@ export default function StatsDashboard({ onBack }) {
                                 <span className="text-[9px] text-slate-500 font-mono">{d.value}</span>
                             </div>
                         ))}
+                    </div>
+                </div>
+
+                {/* 5. DART DISTRIBUTION (NOUVEAU) */}
+                <div className="glass-panel p-4 rounded-3xl border border-white/5 bg-slate-900/50">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Répartition des touches (1-20)</h3>
+                    <div className="h-48 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={stats.dartDistribution} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                                <XAxis dataKey="name" tick={{fontSize: 9, fill: '#64748b'}} axisLine={false} tickLine={false} interval={0} />
+                                <YAxis tick={{fontSize: 9, fill: '#64748b'}} axisLine={false} tickLine={false} />
+                                <Tooltip 
+                                    cursor={{fill: 'rgba(255,255,255,0.05)'}}
+                                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                                />
+                                <Bar dataKey="count" fill="#3b82f6" radius={[2, 2, 0, 0]}>
+                                    {
+                                      stats.dartDistribution && stats.dartDistribution.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.name === '20' ? '#ef4444' : entry.name === '19' ? '#f59e0b' : '#3b82f6'} />
+                                      ))
+                                    }
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
                     </div>
                 </div>
             </>

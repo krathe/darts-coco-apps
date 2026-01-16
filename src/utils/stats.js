@@ -135,6 +135,36 @@ export const calculateGlobalStats = (data, viewType) => {
         { name: '180', value: s180, color: '#f59e0b', percent: ((s180/totalScores)*100).toFixed(0)+'%' },
     ];
 
+    // --- ANALYSE DE LA RÉPARTITION DES FLÉCHETTES (1-20, Bull) ---
+    const dartCounts = {};
+    for (let i = 1; i <= 20; i++) dartCounts[i] = 0;
+    dartCounts[25] = 0; // Bull
+
+    data.forEach(m => {
+        if (m.match_details && Array.isArray(m.match_details)) {
+            m.match_details.forEach(turn => {
+                if (turn.darts) {
+                    turn.darts.forEach(d => {
+                        // On prend la baseScore (val). 
+                        // Note : si c'est 50 (Bullseye), on le compte comme 25 pour simplifier le graph
+                        let val = d.val;
+                        if (val === 50) val = 25;
+                        if (val > 0) { // On ignore les Miss (0)
+                             dartCounts[val] = (dartCounts[val] || 0) + 1;
+                        }
+                    });
+                }
+            });
+        }
+    });
+
+    // Formatage pour Recharts : on veut l'ordre 1, 2, ... 20, Bull
+    const dartDistribution = [];
+    for (let i = 1; i <= 20; i++) {
+        dartDistribution.push({ name: i.toString(), count: dartCounts[i] });
+    }
+    dartDistribution.push({ name: 'B', count: dartCounts[25] });
+
     const chartData = data.map(m => ({
       date: new Date(m.created_at).toLocaleString(undefined, { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }),
       avg: Number(m.avg),
@@ -146,7 +176,7 @@ export const calculateGlobalStats = (data, viewType) => {
         stats: { 
             games, avg, bestAvg, total180, bestLeg: 0, best301, best501, bestBobs, checkoutRate, 
             scoringDistribution, totalDartsThrown, highestCheckout, recentAvg, 
-            avgTrend, winRate, first9Avg, treblePercentage,
+            avgTrend, winRate, first9Avg, treblePercentage, dartDistribution,
             soloGames, duelGames, wins, losses 
         },
         rank,

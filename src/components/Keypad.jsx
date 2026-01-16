@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export default function DartKeypad({ onDartThrow, onUndo, disabled }) {
+export default function DartKeypad({ onDartThrow, onUndo, disabled, currentBobs27Target }) {
   const [multiplier, setMultiplier] = useState(1); // 1, 2, or 3
 
   const handleNumberClick = (num) => {
@@ -14,6 +14,84 @@ export default function DartKeypad({ onDartThrow, onUndo, disabled }) {
     setMultiplier(multiplier === val ? 1 : val);
   };
 
+  // --- MODE BOB'S 27 SIMPLIFIÉ (COMPTEUR DE TOUCHES) ---
+  if (currentBobs27Target !== undefined && currentBobs27Target !== null) {
+      const handleHits = (count) => {
+          if (disabled) return;
+          // On ajoute les touches
+          for (let i = 0; i < count; i++) {
+              if (currentBobs27Target === 25) onDartThrow(50, 1);
+              else onDartThrow(currentBobs27Target, 2);
+          }
+          // On complète avec des loupés pour arriver à 3 fléchettes
+          for (let i = 0; i < (3 - count); i++) {
+              onDartThrow(0, 1);
+          }
+      };
+
+      return (
+        <div className="w-full flex flex-col gap-4 px-4 pb-safe animate-in slide-in-from-bottom-4 duration-300">
+            <div className="text-center">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Combien de doubles réussis ?</span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3 h-48">
+                {/* 0 HIT / MISS */}
+                <button 
+                    onClick={() => handleHits(0)}
+                    disabled={disabled}
+                    className="bg-slate-800/50 border-2 border-slate-700 rounded-3xl flex flex-col items-center justify-center active:scale-95 transition-all active:bg-rose-900/20 group"
+                >
+                    <span className="text-3xl mb-1 opacity-40 group-active:scale-125 transition-transform">❌</span>
+                    <span className="text-slate-400 font-black text-xl">MISS</span>
+                </button>
+
+                {/* 1 HIT */}
+                <button 
+                    onClick={() => handleHits(1)}
+                    disabled={disabled}
+                    className="bg-emerald-900/20 border-2 border-emerald-500/50 rounded-3xl flex flex-col items-center justify-center active:scale-95 transition-all active:bg-emerald-500/20 group"
+                >
+                    <span className="text-4xl font-black text-emerald-400 group-active:scale-110 transition-transform">1</span>
+                    <span className="text-[10px] text-emerald-500/50 font-bold uppercase tracking-widest">Double</span>
+                </button>
+
+                {/* 2 HITS */}
+                <button 
+                    onClick={() => handleHits(2)}
+                    disabled={disabled}
+                    className="bg-emerald-900/40 border-2 border-emerald-400 rounded-3xl flex flex-col items-center justify-center active:scale-95 transition-all active:bg-emerald-400/30 group shadow-lg shadow-emerald-900/20"
+                >
+                    <span className="text-4xl font-black text-emerald-300 group-active:scale-110 transition-transform">2</span>
+                    <span className="text-[10px] text-emerald-400/50 font-bold uppercase tracking-widest">Doubles</span>
+                </button>
+
+                {/* 3 HITS */}
+                <button 
+                    onClick={() => handleHits(3)}
+                    disabled={disabled}
+                    className="bg-emerald-500 border-b-8 border-emerald-700 active:border-b-0 active:translate-y-2 rounded-3xl flex flex-col items-center justify-center transition-all shadow-xl shadow-emerald-900/40 group"
+                >
+                    <span className="text-5xl font-black text-white drop-shadow-md group-active:scale-110 transition-transform">3</span>
+                    <span className="text-emerald-900 font-black uppercase tracking-widest text-[10px]">Parfait !</span>
+                </button>
+            </div>
+
+            {/* BARRE OUTILS */}
+            <div className="flex justify-center">
+                <button 
+                    onClick={onUndo} 
+                    disabled={disabled}
+                    className="w-full py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-500 font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all hover:text-white"
+                >
+                    <span>⌫</span> Annuler la volée précédente
+                </button>
+            </div>
+        </div>
+      );
+  }
+
+  // --- MODE STANDARD ---
   return (
     <div className="w-full flex flex-col gap-2 px-2 select-none touch-manipulation pb-safe">
       

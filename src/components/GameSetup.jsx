@@ -61,7 +61,7 @@ export default function GameSetup({ onStart, onShowHistory, onShowStats }) {
           <div>
             <label className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2 block ml-1">Mode de Jeu</label>
             <div className="flex gap-3">
-              {[301, 501].map((m) => (
+              {[301, 501, 'BOBS27'].map((m) => (
                 <button
                   key={m} type="button" onClick={() => setMode(m)}
                   className={`
@@ -72,7 +72,7 @@ export default function GameSetup({ onStart, onShowHistory, onShowStats }) {
                     }
                   `}
                 >
-                  <span className="relative z-10">{m}</span>
+                  <span className="relative z-10 text-base">{m === 'BOBS27' ? "Bob's 27" : m}</span>
                   {mode === m && <div className="absolute inset-0 bg-emerald-400/10 animate-pulse"></div>}
                 </button>
               ))}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { storage } from '../utils/storage';
 
 // MODIFICATION ICI : On passe à 10 par 10
 const ITEMS_PER_PAGE = 10;
@@ -23,20 +23,15 @@ export default function GameHistory({ onBack }) {
     if (pageIndex === 0) setLoading(true);
     else setLoadingMore(true);
 
+    const allMatches = storage.getAllMatches().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
     const from = pageIndex * ITEMS_PER_PAGE;
-    const to = from + ITEMS_PER_PAGE - 1;
-
-    // 1. Récupération des données par tranche (range)
-    const { data } = await supabase
-      .from('matches')
-      .select('*')
-      .neq('id', -1)
-      .order('created_at', { ascending: false })
-      .range(from, to);
+    const to = from + ITEMS_PER_PAGE;
+    const data = allMatches.slice(from, to);
 
     if (data) {
       // Si on reçoit moins de données que demandé, c'est qu'on est à la fin
-      if (data.length < ITEMS_PER_PAGE) {
+      if (data.length < ITEMS_PER_PAGE || to >= allMatches.length) {
         setHasMore(false);
       }
 
@@ -105,9 +100,9 @@ export default function GameHistory({ onBack }) {
     // Suppression visuelle immédiate
     setMatches(prev => prev.filter(m => !match.players.some(p => p.id === m.id)));
 
-    // Suppression DB
+    // Suppression Locale
     const idsToDelete = match.players.map(p => p.id);
-    await supabase.from('matches').delete().in('id', idsToDelete);
+    storage.deleteMatches(idsToDelete);
   };
 
   const toggleExpand = (id) => {

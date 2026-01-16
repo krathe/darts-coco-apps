@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import confetti from 'canvas-confetti';
 import { useGameLogic } from './hooks/useGameLogic';
 import ScoreBoard from './components/ScoreBoard';
 import DartKeypad from './components/Keypad';
@@ -35,7 +34,7 @@ function App() {
     gameState, setGameState, players, currentPlayer, addDart, undoLastDart, validateTurn, 
     currentTurnDarts, winner, legWinner, startNextLeg, matchScore, matchConfig,
     startGame, backToMenu, checkoutHint, calculateStats,
-    undoTurn, canUndo, restartGame
+    undoTurn, canUndo, restartGame, currentBobs27Target
   } = useGameLogic();
 
   const [isMuted, setIsMuted] = useState(() => localStorage.getItem('darts_muted') === 'true');
@@ -61,13 +60,6 @@ function App() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => { if (wakeLock) wakeLock.release(); document.removeEventListener('visibilitychange', handleVisibilityChange); };
   }, []);
-
-  useEffect(() => {
-    if (winner) {
-      const duration = 3000; const end = Date.now() + duration;
-      (function frame() { confetti({ particleCount: 5, spread: 60, origin: { x: Math.random(), y: 0.6 }, colors: ['#10B981', '#FBBF24'] }); if (Date.now() < end) requestAnimationFrame(frame); }());
-    }
-  }, [winner]);
 
   if (gameState === 'STATS') return <StatsDashboard onBack={backToMenu} />;
   if (gameState === 'HISTORY') return <GameHistory onBack={backToMenu} />;
@@ -99,12 +91,17 @@ function App() {
         {/* Info Centrale (Badge Pill) */}
         <div className="flex flex-col items-center justify-center bg-slate-900/50 px-6 py-2 rounded-2xl border border-white/5 backdrop-blur-sm shadow-xl">
           <h1 className="text-lg font-black text-emerald-400 tracking-wider leading-none drop-shadow-md">
-            {matchConfig.mode}
+            {matchConfig.mode === 'BOBS27' ? (
+                <span>
+                    <span className="text-slate-500 text-xs mr-2">TARGET</span>
+                    {currentBobs27Target === 25 ? "BULL" : `D${currentBobs27Target}`}
+                </span>
+            ) : matchConfig.mode}
           </h1>
           <div className="flex items-center gap-1.5 mt-1">
              <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                {matchConfig.setsToWin} Sets • {matchConfig.legsToWin} Legs
+                {matchConfig.mode === 'BOBS27' ? "Bob's 27" : `${matchConfig.setsToWin} Sets • ${matchConfig.legsToWin} Legs`}
              </span>
           </div>
         </div>
@@ -139,7 +136,7 @@ function App() {
         </div>
       </div>
 
-      <ScoreBoard players={players} currentPlayerId={currentPlayer.id} matchScore={matchScore} matchConfig={matchConfig} />
+      <ScoreBoard players={players} currentPlayerId={currentPlayer.id} matchScore={matchScore} matchConfig={matchConfig} currentBobs27Target={currentBobs27Target} />
 
       <div className="w-full px-4 h-12 flex items-center justify-center mb-1">
          <CheckoutViz hint={checkoutHint} />
@@ -176,8 +173,9 @@ function App() {
       <div className="w-full flex-1 flex flex-col justify-end pb-4">
         <DartKeypad 
             onDartThrow={addDart} 
-            onUndo={undoLastDart} 
+            onUndo={matchConfig.mode === 'BOBS27' ? undoTurn : undoLastDart} 
             disabled={!!winner || !!legWinner} 
+            currentBobs27Target={currentBobs27Target}
         />
       </div>
 

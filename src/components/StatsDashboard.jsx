@@ -1,34 +1,11 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { storage } from '../utils/storage';
+import { calculateGlobalStats, getRankData } from '../utils/stats';
 import { 
   AreaChart, Area, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid
 } from 'recharts';
-
-// --- CONFIGURATION DES RANGS (XP SYSTEM) ---
-const RANK_SYSTEM = [
-  { min: 0, max: 30, title: "DÉBUTANT", color: "text-slate-400", barColor: "bg-slate-500", icon: "🌱" },
-  { min: 30, max: 40, title: "AMATEUR", color: "text-blue-400", barColor: "bg-blue-500", icon: "🍺" },
-  { min: 40, max: 50, title: "PUB HERO", color: "text-indigo-400", barColor: "bg-indigo-500", icon: "🔥" },
-  { min: 50, max: 60, title: "CLUB PLAYER", color: "text-emerald-400", barColor: "bg-emerald-500", icon: "🎯" },
-  { min: 60, max: 70, title: "SEMI-PRO", color: "text-amber-400", barColor: "bg-amber-500", icon: "🏆" },
-  { min: 70, max: 85, title: "PRO TOUR", color: "text-rose-400", barColor: "bg-rose-500", icon: "👑" },
-  { min: 85, max: 200, title: "WORLD CLASS", color: "text-purple-400", barColor: "bg-purple-500", icon: "👽" }
-];
-
-const getRankData = (avg) => {
-  const rank = RANK_SYSTEM.find(r => avg >= r.min && avg < r.max) || RANK_SYSTEM[RANK_SYSTEM.length - 1];
-  const nextRank = RANK_SYSTEM[RANK_SYSTEM.indexOf(rank) + 1];
-  
-  let progress = 100;
-  if (nextRank) {
-    const totalRange = rank.max - rank.min;
-    const currentVal = avg - rank.min;
-    progress = (currentVal / totalRange) * 100;
-  }
-  
-  return { ...rank, progress: Math.min(Math.max(progress, 0), 100), nextMin: nextRank ? rank.max : null };
-};
+import Bobs27Stats from './Bobs27Stats';
 
 const CustomTooltip = ({ active, payload, label, config }) => {
   if (active && payload && payload.length) {
@@ -65,7 +42,7 @@ export default function StatsDashboard({ onBack }) {
 
   const [stats, setStats] = useState({
     games: 0, avg: 0, bestAvg: 0, total180: 0, 
-    bestLeg: 0, best301: 0, best501: 0, 
+    bestLeg: 0, best301: 0, best501: 0, bestBobs: 0,
     checkoutRate: 0, scoringDistribution: [], totalDartsThrown: 0, highestCheckout: 0,
     recentAvg: 0, avgTrend: 0, winRate: 0,
     first9Avg: 0, treblePercentage: 0,
@@ -84,7 +61,8 @@ export default function StatsDashboard({ onBack }) {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data } = await supabase.from('matches').select('*').order('created_at', { ascending: true });
+    // LOAD FROM LOCAL STORAGE
+    const data = storage.getAllMatches().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     
     if (data) {
       setAllMatches(data);
@@ -137,124 +115,16 @@ export default function StatsDashboard({ onBack }) {
   };
 
   const processStats = (data) => {
-    if (data.length === 0) {
-      setStats({ games: 0, avg: 0, bestAvg: 0, total180: 0, bestLeg: 0, best301: 0, best501: 0, checkoutRate: 0, scoringDistribution: [], totalDartsThrown: 0, highestCheckout: 0, recentAvg: 0, avgTrend: 0, winRate: 0, first9Avg: 0, treblePercentage: 0, soloGames: 0, duelGames: 0, wins: 0, losses: 0 });
-      setCurrentRank(getRankData(0));
-      setChartData([]);
-      return;
-    }
-
-    const games = data.length;
-    const soloGames = data.filter(m => m.game_type === 'SOLO').length;
-    const duelGames = data.filter(m => m.game_type === 'DUEL').length;
-
-    // Stats Victoires / Défaites uniquement sur les Duels
-    const duelData = data.filter(m => m.game_type === 'DUEL');
-    const wins = duelData.filter(m => m.result === 'WIN').length;
-    const losses = duelData.filter(m => m.result === 'LOSS').length;
-    const winRate = duelData.length > 0 ? ((wins / duelData.length) * 100).toFixed(0) : 0;
-
-    const avgs = data.map(m => Number(m.avg));
-    const avg = (avgs.reduce((a, b) => a + b, 0) / games).toFixed(1);
-    setCurrentRank(getRankData(Number(avg)));
-
-    const recentMatches = data.slice(-5);
-    const recentAvgRaw = recentMatches.length > 0 ? recentMatches.reduce((acc, m) => acc + Number(m.avg), 0) / recentMatches.length : 0;
-    const recentAvg = recentAvgRaw.toFixed(1);
-    const avgTrend = (recentAvgRaw - parseFloat(avg)).toFixed(1);
-
-    const bestAvg = Math.max(...avgs);
-    const totalDartsThrown = data.reduce((acc, m) => acc + (m.darts || 0), 0);
-    
-    let totalFirst9Points = 0;
-    let totalFirst9Darts = 0;
-    let totalTrebles = 0;
-    let totalThrowsRecorded = 0;
-
-    data.forEach(m => {
-        if (m.match_details && Array.isArray(m.match_details)) {
-            const first3Turns = m.match_details.slice(0, 3);
-            first3Turns.forEach(turn => {
-                totalFirst9Points += turn.total || 0;
-                if (turn.darts) {
-                    totalFirst9Darts += turn.darts.length;
-                    turn.darts.forEach(d => {
-                        if (d.mult === 3) totalTrebles++;
-                        totalThrowsRecorded++;
-                    });
-                }
-            });
-
-            const restOfMatch = m.match_details.slice(3);
-            restOfMatch.forEach(turn => {
-                if (turn.darts) {
-                    turn.darts.forEach(d => {
-                        if (d.mult === 3) totalTrebles++;
-                        totalThrowsRecorded++;
-                    });
-                }
-            });
-        }
-    });
-
-    const first9Avg = totalFirst9Darts > 0 ? ((totalFirst9Points / totalFirst9Darts) * 3).toFixed(1) : "0.0";
-    const treblePercentage = totalThrowsRecorded > 0 ? ((totalTrebles / totalThrowsRecorded) * 100).toFixed(1) : "0.0";
-
-    const m301 = data.filter(m => m.mode == 301 && m.darts > 0).map(m => m.darts);
-    const best301 = m301.length ? Math.min(...m301) : 0;
-    const m501 = data.filter(m => m.mode == 501 && m.darts > 0).map(m => m.darts);
-    const best501 = m501.length ? Math.min(...m501) : 0;
-
-    const total180 = data.reduce((acc, m) => acc + (m.scores_180s || 0), 0);
-    
-    // --- CORRECTION DU CALCUL HIGHEST CHECKOUT ---
-    // On extrait les valeurs, on force le type Nombre, et on filtre les valeurs invalides
-    const checkoutValues = data.map(m => Number(m.highest_checkout));
-    // On prend le Max, mais si le tableau est vide ou contient que des NaN/0, on fallback sur 0
-    const highestCheckout = checkoutValues.length > 0 ? Math.max(0, ...checkoutValues) : 0;
-
-    let totalCheckoutSum = 0;
-    let gamesWithCheckout = 0;
-    data.forEach(m => {
-        if (m.checkout && m.checkout !== "0%") {
-            const val = parseInt(m.checkout.replace('%', ''));
-            if (!isNaN(val)) totalCheckoutSum += val; gamesWithCheckout++;
-        }
-    });
-    const checkoutRate = gamesWithCheckout > 0 ? (totalCheckoutSum / gamesWithCheckout).toFixed(0) : 0;
-
-    const s60 = data.reduce((acc, m) => acc + (m.scores_60plus || 0), 0);
-    const s100 = data.reduce((acc, m) => acc + (m.scores_100plus || 0), 0);
-    const s140 = data.reduce((acc, m) => acc + (m.scores_140plus || 0), 0);
-    const s180 = total180;
-    
-    const totalScores = s60 + s100 + s140 + s180 || 1;
-    const scoringData = [
-        { name: '60+', value: s60, color: '#94a3b8', percent: ((s60/totalScores)*100).toFixed(0)+'%' },
-        { name: '100+', value: s100, color: '#60a5fa', percent: ((s100/totalScores)*100).toFixed(0)+'%' },
-        { name: '140+', value: s140, color: '#34d399', percent: ((s140/totalScores)*100).toFixed(0)+'%' },
-        { name: '180', value: s180, color: '#f59e0b', percent: ((s180/totalScores)*100).toFixed(0)+'%' },
-    ];
-
-    setStats({ 
-        games, avg, bestAvg, total180, bestLeg: 0, best301, best501, checkoutRate, 
-        scoringDistribution: scoringData, totalDartsThrown, highestCheckout, recentAvg, 
-        avgTrend, winRate, first9Avg, treblePercentage,
-        soloGames, duelGames, wins, losses 
-    });
-    
-    setChartData(data.map(m => ({
-      date: new Date(m.created_at).toLocaleString(undefined, { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      avg: Number(m.avg),
-      checkout: m.checkout ? parseInt(m.checkout.replace('%','')) : 0,
-      darts: m.darts
-    })));
+    const result = calculateGlobalStats(data, viewType);
+    setStats(result.stats);
+    setCurrentRank(result.rank);
+    setChartData(result.chartData);
   };
 
   const handleClearHistory = async () => {
-    if (!window.confirm("Attention : Cela effacera tout l'historique d'entraînement. Continuer ?")) return;
+    if (!window.confirm("Attention : Cela effacera tout l'historique d'entraînement LOCAL. Continuer ?")) return;
     setLoading(true);
-    await supabase.from('matches').delete().neq('id', -1);
+    storage.clearAll();
     setAllMatches([]);
     setLoading(false);
   };
@@ -277,7 +147,9 @@ export default function StatsDashboard({ onBack }) {
             <span className="group-hover:-translate-x-1 transition-transform">←</span> Menu
         </button>
         <h2 className="text-emerald-400 font-black tracking-[0.2em] text-sm">ANALYTICS</h2>
-        <button onClick={() => { if(window.confirm("Tout effacer ?")) { supabase.from('matches').delete().neq('id', -1).then(() => setAllMatches([])); } }} className="text-red-900 hover:text-red-500 transition opacity-50 hover:opacity-100">🗑️</button>
+        <div className="flex gap-2">
+            <button onClick={handleClearHistory} className="text-red-900 hover:text-red-500 transition opacity-50 hover:opacity-100">🗑️</button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-hide relative">
@@ -320,7 +192,7 @@ export default function StatsDashboard({ onBack }) {
                         {availableModes.length > 0 && (
                             <select value={gameMode} onChange={e => setGameMode(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))} className="bg-slate-800 text-amber-400 text-[10px] font-bold py-2 px-3 rounded-lg border border-white/10 outline-none uppercase tracking-wide shadow-lg w-24 text-center">
                                 <option value="ALL">Modes</option>
-                                {availableModes.map(m => <option key={m} value={m}>{m}</option>)}
+                                {availableModes.map(m => <option key={m} value={m}>{m === 27 ? "Bob's 27" : m}</option>)}
                             </select>
                         )}
                     </div>
@@ -337,6 +209,9 @@ export default function StatsDashboard({ onBack }) {
 
         <div className="p-4 space-y-6 pb-12">
             {loading ? <div className="text-center mt-20 text-emerald-500 animate-pulse font-mono">Chargement des données...</div> : stats.games === 0 ? <div className="text-center mt-20 text-slate-500">Aucune donnée trouvée pour cette vue.</div> : (
+            gameMode === 27 ? (
+                <Bobs27Stats matches={filteredMatches} />
+            ) : (
             <>
                 {/* 1. HERO CARD */}
                 <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 border border-white/10 relative overflow-hidden shadow-2xl">
@@ -355,7 +230,9 @@ export default function StatsDashboard({ onBack }) {
                         </div>
                         <div className="text-right">
                             <div className="text-3xl font-black text-white">{stats.avg}</div>
-                            <div className="text-[9px] text-slate-500 uppercase font-bold">Moyenne {viewType === 'ALL' ? 'Globale' : viewType === 'SOLO' ? 'Training' : 'Match'}</div>
+                            <div className="text-[9px] text-slate-500 uppercase font-bold">
+                                {gameMode === 27 ? "Score Moyen" : `Moyenne ${viewType === 'ALL' ? 'Globale' : viewType === 'SOLO' ? 'Training' : 'Match'}`}
+                            </div>
                         </div>
                     </div>
                     <div className="relative pt-2">
@@ -434,22 +311,31 @@ export default function StatsDashboard({ onBack }) {
 
                     {/* Best Leg Split */}
                     <div className="col-span-2 glass-panel p-3 rounded-xl border border-white/5 flex flex-col gap-2">
-                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-center mb-1">Records (Best Legs)</div>
-                        <div className="flex gap-2">
-                            {gameMode === 'ALL' || gameMode === 301 ? (
-                                <div className="flex-1 bg-slate-800/50 rounded-lg p-2 flex justify-between items-center border border-slate-700">
-                                    <span className="text-[10px] font-bold text-slate-400">301</span>
-                                    <span className="text-lg font-black text-blue-400">{stats.best301 || '-'}</span>
+                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-center mb-1">Records Personnels</div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {(gameMode === 'ALL' || gameMode === 301) && (
+                                <div className="bg-slate-800/50 rounded-lg p-2 flex flex-col items-center border border-slate-700">
+                                    <span className="text-[8px] font-bold text-slate-500 uppercase">301</span>
+                                    <span className="text-base font-black text-blue-400">{stats.best301 || '-'}</span>
+                                    <span className="text-[7px] text-slate-600">Darts</span>
                                 </div>
-                            ) : null}
-                            {gameMode === 'ALL' || gameMode === 501 ? (
-                                <div className="flex-1 bg-slate-800/50 rounded-lg p-2 flex justify-between items-center border border-slate-700">
-                                    <span className="text-[10px] font-bold text-slate-400">501</span>
-                                    <span className="text-lg font-black text-purple-400">{stats.best501 || '-'}</span>
+                            )}
+                            {(gameMode === 'ALL' || gameMode === 501) && (
+                                <div className="bg-slate-800/50 rounded-lg p-2 flex flex-col items-center border border-slate-700">
+                                    <span className="text-[8px] font-bold text-slate-500 uppercase">501</span>
+                                    <span className="text-base font-black text-purple-400">{stats.best501 || '-'}</span>
+                                    <span className="text-[7px] text-slate-600">Darts</span>
                                 </div>
-                            ) : null}
+                            )}
+                            {(gameMode === 'ALL' || gameMode === 27) && (
+                                <div className="bg-slate-800/50 rounded-lg p-2 flex flex-col items-center border border-emerald-500/30">
+                                    <span className="text-[8px] font-bold text-slate-500 uppercase">Bob's 27</span>
+                                    <span className="text-base font-black text-emerald-400">{stats.bestBobs || '-'}</span>
+                                    <span className="text-[7px] text-slate-600">Points</span>
+                                </div>
+                            )}
                         </div>
-                        <p className="text-[8px] text-slate-500 text-center mt-1">Minimum de fléchettes pour gagner.</p>
+                        <p className="text-[8px] text-slate-500 text-center mt-1 italic">Records basés sur vos meilleures performances.</p>
                     </div>
 
                     {/* VOLUMÉTRIE & RATIO */}
@@ -527,7 +413,7 @@ export default function StatsDashboard({ onBack }) {
                     </div>
                 </div>
             </>
-            )}
+            ))}
         </div>
       </div>
     </div>
